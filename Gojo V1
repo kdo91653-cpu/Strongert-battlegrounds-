@@ -97,7 +97,7 @@ elseif v3 == true then
         game.StarterGui:SetCore("SendNotification", {
             Title = "Thank you for your support, Khanhly",
             Text = p29,
-            Icon = "rbxassetid://111450164466537",
+            Icon = "rbxassetid://15029401778",
             Duration = p30
         })
     end
