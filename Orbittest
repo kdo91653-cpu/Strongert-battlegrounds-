@@ -1,0 +1,561 @@
+--!nonstrict
+-- =========================================================
+--  KHANHLY ORBIT BLINK (Raw, độc lập)
+--  Return: { Destroy, Run, SetLocked, Name }
+-- =========================================================
+
+local UIS        = game:GetService("UserInputService")
+local Players    = game:GetService("Players")
+local TS         = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local Camera     = workspace.CurrentCamera
+local Player     = Players.LocalPlayer
+
+-- ============ CONFIG ============
+local BGTransparency    = 0.45
+local IconTransparency  = 0.40
+local HoldToDrag        = 0.2
+local ORBIT_DURATION    = 2
+local COOLDOWN_TIME     = 5
+local SCAN_RADIUS       = 15
+local STAR_RADIUS       = 10
+local STAR_SPEED        = 40
+local STAR_AMPLITUDE    = 0.5
+local STAR_POINTS       = 5
+local BEHIND_DISTANCE   = 3
+local CAMERA_LERP_ALPHA = 0.15
+
+local GUI_NAME = "KHANHLY_Orbit_GUI"
+
+-- ============ STATE ============
+local S = { Locked = false, Destroyed = false }
+local Connections = {}
+local function track(c) table.insert(Connections, c); return c end
+
+-- ============ ÂM THANH BLINK ============
+local teleportSound = Instance.new("Sound")
+teleportSound.SoundId = "rbxassetid://5066021887"
+teleportSound.Volume  = 1
+teleportSound.Parent  = workspace
+
+local currentOrbitAnimTrack = nil
+
+local function playTeleportSound()
+    if teleportSound.IsPlaying then teleportSound:Stop() end
+    teleportSound:Play()
+end
+
+local function teleportWithSound(cframe)
+    if S.Destroyed then return end
+    if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+        Player.Character:PivotTo(cframe)
+        playTeleportSound()
+    end
+end
+
+-- ============ GUI ============
+local old = Player:WaitForChild("PlayerGui"):FindFirstChild(GUI_NAME)
+if old then old:Destroy() end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = GUI_NAME
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = Player:WaitForChild("PlayerGui")
+
+local Frame = Instance.new("Frame")
+Frame.Parent = gui
+Frame.Size = UDim2.fromOffset(68, 68)
+Frame.Position = UDim2.new(0.82, 0, 0.55, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Frame.BackgroundTransparency = BGTransparency
+Frame.BorderSizePixel = 0
+Frame.ClipsDescendants = true
+Frame.Active = true
+
+local Aspect = Instance.new("UIAspectRatioConstraint")
+Aspect.Parent = Frame
+Aspect.AspectRatio = 1
+
+local Corner = Instance.new("UICorner")
+Corner.Parent = Frame
+Corner.CornerRadius = UDim.new(1, 0)
+
+local Stroke = Instance.new("UIStroke")
+Stroke.Parent = Frame
+Stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+Stroke.Thickness = 2
+Stroke.Color = Color3.fromRGB(220, 220, 220)
+Stroke.Transparency = 0.25
+
+local Button = Instance.new("ImageButton")
+Button.Parent = Frame
+Button.AnchorPoint = Vector2.new(0.5, 0.5)
+Button.Position = UDim2.fromScale(0.5, 0.5)
+Button.Size = UDim2.fromScale(0.65, 0.65)
+Button.Image = "rbxassetid://93226085899249"
+Button.ScaleType = Enum.ScaleType.Fit
+Button.ImageTransparency = IconTransparency
+Button.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+Button.BackgroundTransparency = BGTransparency + 0.05
+Button.BorderSizePixel = 0
+
+local BCorner = Instance.new("UICorner")
+BCorner.Parent = Button
+BCorner.CornerRadius = UDim.new(1, 0)
+
+local BStroke = Instance.new("UIStroke")
+BStroke.Parent = Button
+BStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+BStroke.Thickness = 2
+BStroke.Color = Color3.fromRGB(210, 210, 210)
+BStroke.Transparency = 0.2
+
+local BlackOverlay = Instance.new("Frame")
+BlackOverlay.Name = "BlackOverlay"
+BlackOverlay.Parent = Frame
+BlackOverlay.Size = UDim2.fromScale(1, 1)
+BlackOverlay.BackgroundColor3 = Color3.new(0, 0, 0)
+BlackOverlay.BackgroundTransparency = 0.5
+BlackOverlay.BorderSizePixel = 0
+BlackOverlay.ZIndex = 5
+
+local OverlayCorner = Instance.new("UICorner")
+OverlayCorner.Parent = BlackOverlay
+OverlayCorner.CornerRadius = UDim.new(1, 0)
+
+local MaskContainer = Instance.new("Frame")
+MaskContainer.Name = "MaskContainer"
+MaskContainer.Parent = Frame
+MaskContainer.Size = UDim2.fromScale(1, 1)
+MaskContainer.BackgroundTransparency = 1
+MaskContainer.BorderSizePixel = 0
+MaskContainer.ClipsDescendants = true
+MaskContainer.ZIndex = 6
+
+local RightMask = Instance.new("Frame")
+RightMask.Name = "RightMask"
+RightMask.Parent = MaskContainer
+RightMask.AnchorPoint = Vector2.new(0.5, 0.5)
+RightMask.Position = UDim2.fromScale(0.5, 0.5)
+RightMask.Size = UDim2.fromScale(2, 2)
+RightMask.BackgroundTransparency = 1
+RightMask.BorderSizePixel = 0
+RightMask.ClipsDescendants = true
+
+local LeftMask = Instance.new("Frame")
+LeftMask.Name = "LeftMask"
+LeftMask.Parent = MaskContainer
+LeftMask.AnchorPoint = Vector2.new(0.5, 0.5)
+LeftMask.Position = UDim2.fromScale(0.5, 0.5)
+LeftMask.Size = UDim2.fromScale(2, 2)
+LeftMask.BackgroundTransparency = 1
+LeftMask.BorderSizePixel = 0
+LeftMask.ClipsDescendants = true
+
+local WhiteCircleId = "rbxassetid://2844027525"
+
+local RightCircle = Instance.new("ImageLabel")
+RightCircle.Name = "RightCircle"
+RightCircle.Parent = RightMask
+RightCircle.Size = UDim2.fromScale(1, 1)
+RightCircle.BackgroundTransparency = 1
+RightCircle.Image = WhiteCircleId
+RightCircle.ImageTransparency = 1
+
+local LeftCircle = Instance.new("ImageLabel")
+LeftCircle.Name = "LeftCircle"
+LeftCircle.Parent = LeftMask
+LeftCircle.Size = UDim2.fromScale(1, 1)
+LeftCircle.BackgroundTransparency = 1
+LeftCircle.Image = WhiteCircleId
+LeftCircle.ImageTransparency = 1
+
+local CooldownText = Instance.new("TextLabel")
+CooldownText.Parent = Frame
+CooldownText.AnchorPoint = Vector2.new(0.5, 0.5)
+CooldownText.Position = UDim2.fromScale(0.5, 0.5)
+CooldownText.Size = UDim2.fromScale(0.8, 0.8)
+CooldownText.BackgroundTransparency = 1
+CooldownText.Font = Enum.Font.GothamBold
+CooldownText.TextScaled = true
+CooldownText.TextColor3 = Color3.fromRGB(115, 115, 210)
+CooldownText.TextTransparency = 1
+CooldownText.Text = ""
+CooldownText.ZIndex = 10
+
+-- ============ DRAG ============
+local dragging, dragInput, dragStart, startPos, DidDrag = false, nil, nil, nil, false
+
+track(Frame.InputBegan:Connect(function(input)
+    if S.Locked or S.Destroyed then return end
+    if input.UserInputType ~= Enum.UserInputType.Touch
+       and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+
+    DidDrag   = false
+    dragInput = input
+    dragStart = input.Position
+    startPos  = Frame.Position
+
+    task.delay(HoldToDrag, function()
+        if S.Destroyed or S.Locked then return end
+        if dragInput == input and input.UserInputState ~= Enum.UserInputState.End then
+            DidDrag  = true
+            dragging = true
+        end
+    end)
+
+    track(input.Changed:Connect(function()
+        if input.UserInputState == Enum.UserInputState.End then
+            dragging  = false
+            dragInput = nil
+        end
+    end))
+end))
+
+track(UIS.InputChanged:Connect(function(input)
+    if S.Locked or S.Destroyed then return end
+    if not dragging then return end
+    if input.UserInputType ~= Enum.UserInputType.Touch
+       and input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+    local delta = input.Position - dragStart
+    Frame.Position = UDim2.new(
+        startPos.X.Scale, startPos.X.Offset + delta.X,
+        startPos.Y.Scale, startPos.Y.Offset + delta.Y
+    )
+end))
+
+-- ============ CLICK TWEEN ============
+local clickTweenIn, clickTweenOut
+track(Button.MouseButton1Down:Connect(function()
+    if S.Destroyed then return end
+    if clickTweenIn then clickTweenIn:Cancel() end
+    clickTweenIn = TS:Create(Button, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Size = UDim2.fromScale(0.77, 0.77)
+    })
+    clickTweenIn:Play()
+end))
+
+track(Button.MouseButton1Up:Connect(function()
+    if S.Destroyed then return end
+    if clickTweenOut then clickTweenOut:Cancel() end
+    clickTweenOut = TS:Create(Button, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Size = UDim2.fromScale(0.82, 0.82)
+    })
+    clickTweenOut:Play()
+end))
+
+-- ============ COOLDOWN UI ============
+local cooldownActive      = false
+local cooldownStartTick   = 0
+local heartBeatConnection = nil
+local endGlowTween        = nil
+
+local function clearCooldown()
+    if heartBeatConnection then
+        heartBeatConnection:Disconnect()
+        heartBeatConnection = nil
+    end
+    cooldownActive = false
+    RightCircle.ImageTransparency = 1
+    LeftCircle.ImageTransparency  = 1
+    CooldownText.TextTransparency = 1
+    CooldownText.Text = ""
+    if endGlowTween then endGlowTween:Cancel(); endGlowTween = nil end
+end
+
+local function startCooldown()
+    if cooldownActive then return end
+    cooldownActive = true
+    cooldownStartTick = tick()
+    RightCircle.ImageTransparency = 0
+    LeftCircle.ImageTransparency  = 0
+    RightMask.Rotation = 0
+    LeftMask.Rotation  = 0
+    CooldownText.TextTransparency = 0
+    CooldownText.Text = tostring(COOLDOWN_TIME)
+
+    if heartBeatConnection then heartBeatConnection:Disconnect() end
+    heartBeatConnection = RunService.Heartbeat:Connect(function()
+        if S.Destroyed then clearCooldown(); return end
+        local elapsed    = tick() - cooldownStartTick
+        local remaining  = math.max(0, COOLDOWN_TIME - elapsed)
+        local progress   = math.min(1, elapsed / COOLDOWN_TIME)
+        local displayNum = math.ceil(remaining)
+        CooldownText.Text = (displayNum > 0) and tostring(displayNum) or ""
+
+        if progress <= 0.5 then
+            RightMask.Rotation = progress * 360
+            LeftMask.Rotation  = 0
+        else
+            RightMask.Rotation = 180
+            LeftMask.Rotation  = (progress - 0.5) * 360
+        end
+
+        if remaining <= 0 then
+            clearCooldown()
+            local origStrokeColor     = Stroke.Color
+            local origStrokeThickness = Stroke.Thickness
+            local glowInfo = TweenInfo.new(0.15, Enum.EasingStyle.Sine, Enum.EasingDirection.Out, 0, true)
+            if endGlowTween then endGlowTween:Cancel() end
+            endGlowTween = TS:Create(Stroke, glowInfo, {
+                Color = Color3.fromRGB(255, 255, 150),
+                Thickness = 4
+            })
+            endGlowTween:Play()
+            endGlowTween.Completed:Once(function()
+                Stroke.Color = origStrokeColor
+                Stroke.Thickness = origStrokeThickness
+                endGlowTween = nil
+            end)
+        end
+    end)
+end
+
+-- ============ ORBIT LOGIC ============
+local state              = "IDLE"
+local targetPlayer       = nil
+local orbitStartTime     = 0
+local savedCameraSubject = nil
+local cameraFocusPart    = nil
+
+local highlight = Instance.new("Highlight")
+highlight.FillColor = Color3.fromRGB(255, 0, 0)
+highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+highlight.FillTransparency = 0.5
+highlight.Parent = nil
+
+local function clearTarget() highlight.Parent = nil; targetPlayer = nil end
+local function setState(s) state = s end
+
+local function isPlayerAlive(plr)
+    local char = plr and plr.Character
+    if not char then return false end
+    local hum = char:FindFirstChild("Humanoid")
+    return hum and hum.Health > 0
+end
+
+local function scanNearestPlayer()
+    if not isPlayerAlive(Player) then return nil end
+    local myRoot = Player.Character.HumanoidRootPart
+    local nearest, nearestDist = nil, SCAN_RADIUS
+    for _, other in ipairs(Players:GetPlayers()) do
+        if other ~= Player and isPlayerAlive(other) then
+            local dist = (other.Character.HumanoidRootPart.Position - myRoot.Position).Magnitude
+            if dist < nearestDist then nearestDist, nearest = dist, other end
+        end
+    end
+    return nearest
+end
+
+local function showMarker(plr)
+    if not plr or not plr.Character then return end
+    highlight.Parent = plr.Character
+end
+local function hideMarker() highlight.Parent = nil end
+
+local function getSmoothStarPosition(t, targetPos)
+    local angle = t * STAR_SPEED
+    local r = STAR_RADIUS * (1 + STAR_AMPLITUDE * math.cos(STAR_POINTS * angle))
+    return targetPos + Vector3.new(math.cos(angle) * r, 0, math.sin(angle) * r)
+end
+
+local function getOrCreateCameraFocusPart()
+    if not cameraFocusPart then
+        cameraFocusPart = Instance.new("Part")
+        cameraFocusPart.Name = "CameraFocus"
+        cameraFocusPart.Transparency = 1
+        cameraFocusPart.CanCollide = false
+        cameraFocusPart.Anchored = true
+        cameraFocusPart.Size = Vector3.new(0.1, 0.1, 0.1)
+        cameraFocusPart.Parent = workspace
+    end
+    return cameraFocusPart
+end
+
+local function stopOrbitAnimTrack()
+    if currentOrbitAnimTrack then
+        pcall(function() currentOrbitAnimTrack:Stop(0.1) end)
+        currentOrbitAnimTrack = nil
+    end
+end
+
+local function requestOrbit()
+    if S.Destroyed then return end
+    if state ~= "READY" or not targetPlayer then return end
+    setState("ORBITING")
+    orbitStartTime = tick()
+    startCooldown()
+
+    savedCameraSubject = Camera.CameraSubject
+    local focusPart = getOrCreateCameraFocusPart()
+    focusPart.Position = targetPlayer.Character.HumanoidRootPart.Position
+    Camera.CameraSubject = focusPart
+    Camera.CameraType    = Enum.CameraType.Custom
+
+    local char = Player.Character
+    if char then
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
+            animator.Parent = humanoid
+            stopOrbitAnimTrack()
+            local anim = Instance.new("Animation")
+            anim.AnimationId = "rbxassetid://133917752081592"
+            local tk = animator:LoadAnimation(anim)
+            tk.Priority = Enum.AnimationPriority.Action4
+            tk:Play(0)
+            task.spawn(function()
+                task.wait(0.08)
+                if S.Destroyed then return end
+                if tk and tk.IsPlaying then tk:AdjustSpeed(0) end
+            end)
+            currentOrbitAnimTrack = tk
+        end
+    end
+
+    local starPos = getSmoothStarPosition(tick(), targetPlayer.Character.HumanoidRootPart.Position)
+    local direction = (targetPlayer.Character.HumanoidRootPart.Position - starPos).Unit
+    local desiredCamPos = starPos + direction * 22 + Vector3.new(0, 4, 0)
+    Camera.CFrame = CFrame.lookAt(desiredCamPos, targetPlayer.Character.HumanoidRootPart.Position)
+end
+
+local function resetToIdle()
+    orbitStartTime = 0
+    pcall(function()
+        Camera.CameraType = Enum.CameraType.Custom
+        Camera.CameraSubject = savedCameraSubject or (Player.Character and Player.Character:FindFirstChild("Humanoid"))
+    end)
+    savedCameraSubject = nil
+    if cameraFocusPart then cameraFocusPart:Destroy(); cameraFocusPart = nil end
+    hideMarker()
+    clearTarget()
+    stopOrbitAnimTrack()
+    setState("IDLE")
+end
+
+local function finishOrbit()
+    if not targetPlayer or not isPlayerAlive(targetPlayer) then resetToIdle(); return end
+    local targetRoot = targetPlayer.Character.HumanoidRootPart
+    local behindPos  = targetRoot.Position - targetRoot.CFrame.LookVector * BEHIND_DISTANCE
+
+    -- Chỉ phát sound DUY NHẤT 1 lần ở đây
+    teleportWithSound(CFrame.new(behindPos, targetRoot.Position))
+
+    pcall(function()
+        Camera.CameraType = Enum.CameraType.Custom
+        Camera.CameraSubject = savedCameraSubject or (Player.Character and Player.Character:FindFirstChild("Humanoid"))
+    end)
+    savedCameraSubject = nil
+    if cameraFocusPart then cameraFocusPart:Destroy(); cameraFocusPart = nil end
+    hideMarker()
+    clearTarget()
+    stopOrbitAnimTrack()
+    setState("IDLE")
+end
+
+local function onLocalPlayerDied() resetToIdle(); clearCooldown() end
+
+local function onCharacterAdded(char)
+    if S.Destroyed then return end
+    resetToIdle()
+    clearCooldown()
+    local hum = char:WaitForChild("Humanoid")
+    track(hum.Died:Connect(function()
+        if S.Destroyed then return end
+        onLocalPlayerDied()
+    end))
+end
+
+if Player.Character then onCharacterAdded(Player.Character) end
+track(Player.CharacterAdded:Connect(onCharacterAdded))
+
+-- ============ RUN ============
+local function Run()
+    if S.Destroyed or cooldownActive or DidDrag then return end
+    if state == "READY" then requestOrbit() end
+end
+
+track(Button.MouseButton1Click:Connect(Run))
+
+-- ============ RENDER LOOP ============
+track(RunService.RenderStepped:Connect(function()
+    if S.Destroyed then return end
+    if not isPlayerAlive(Player) then return end
+    local myRoot = Player.Character.HumanoidRootPart
+
+    if state == "IDLE" then
+        local nearest = scanNearestPlayer()
+        if nearest then
+            targetPlayer = nearest
+            showMarker(nearest)
+            setState("READY")
+        end
+
+    elseif state == "READY" then
+        if not targetPlayer or not isPlayerAlive(targetPlayer) then
+            resetToIdle()
+        else
+            local dist = (targetPlayer.Character.HumanoidRootPart.Position - myRoot.Position).Magnitude
+            if dist > SCAN_RADIUS then resetToIdle() end
+        end
+
+    elseif state == "ORBITING" then
+        if not targetPlayer or not isPlayerAlive(targetPlayer) then
+            resetToIdle(); return
+        end
+
+        local targetRoot = targetPlayer.Character.HumanoidRootPart
+        local elapsed = tick() - orbitStartTime
+
+        if elapsed >= ORBIT_DURATION then finishOrbit(); return end
+        if myRoot.Position.Y < -500 then resetToIdle(); return end
+
+        local starPos = getSmoothStarPosition(tick(), targetRoot.Position)
+
+        -- Teleport KHÔNG sound mỗi frame (sound chỉ ở finishOrbit)
+        Player.Character:PivotTo(CFrame.new(starPos, targetRoot.Position))
+
+        if cameraFocusPart then
+            cameraFocusPart.Position = cameraFocusPart.Position:Lerp(targetRoot.Position, CAMERA_LERP_ALPHA)
+        end
+    end
+end))
+
+-- ============ LOCK API ============
+local function SetLocked(value)
+    S.Locked = value == true
+    if S.Locked then
+        dragging  = false
+        DidDrag   = false
+        dragInput = nil
+    end
+end
+
+-- ============ DESTROY ============
+local function Destroy()
+    if S.Destroyed then return end
+    S.Destroyed = true
+    pcall(resetToIdle)
+    pcall(clearCooldown)
+    pcall(stopOrbitAnimTrack)
+
+    if teleportSound then pcall(function() teleportSound:Destroy() end) end
+    if cameraFocusPart then pcall(function() cameraFocusPart:Destroy() end) end
+    if highlight then pcall(function() highlight:Destroy() end) end
+
+    for _, c in ipairs(Connections) do
+        pcall(function() c:Disconnect() end)
+    end
+    Connections = {}
+
+    local g = Player:FindFirstChild("PlayerGui") and Player.PlayerGui:FindFirstChild(GUI_NAME)
+    if g then g:Destroy() end
+end
+
+return {
+    Destroy   = Destroy,
+    Run       = Run,
+    SetLocked = SetLocked,
+    Name      = GUI_NAME,
+}
